@@ -7,9 +7,10 @@ const { sendError } = require('../utils/response')
 const AppError = require('../utils/AppError')
 
 /*
- * Reads `Authorization: Bearer <token>` and attaches `req.user = { id, role }`
- * to the request. Also loads the user record so deleted accounts cannot use an
- * old token (an extra safety check).
+ * Reads `Authorization: Bearer <token>` and attaches `req.user` (id, fullName,
+ * email, role, phone, address) to the request. It also loads the user record so
+ * deleted accounts cannot keep using an old token, and so a role changed in the
+ * database applies immediately instead of waiting for the token to expire.
  */
 const authenticate = async (req, res, next) => {
   try {
@@ -35,17 +36,29 @@ const authenticate = async (req, res, next) => {
     }
 
     // decoded contains { id, role, iat, exp }
+    //
+    // The role always comes from the database, never from the token, so
+    // demoting someone takes effect on their very next request instead of
+    // waiting for the old token to expire.
     const user = await prisma.user.findUnique({
       where: { id: decoded.id },
-      select: { id: true, role: true, email: true },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        role: true,
+        phone: true,
+        address: true,
+      },
     })
 
     if (!user) {
       return sendError(res, 401, 'Unauthorized: User not found')
     }
 
-    // Attach the minimal user object the rest of the app needs.
-    req.user = { id: user.id, role: user.role }
+    // The password hash is deliberately not in the select above, so this
+    // object is safe to attach to the request and return from /auth/me.
+    req.user = user
 
     return next()
   } catch (error) {

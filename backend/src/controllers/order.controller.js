@@ -42,24 +42,33 @@ const createOrder = [
           err.statusCode = 404
           throw err
         }
-        if (medicine.stockQuantity < item.quantity) {
+
+        /*
+         * Reduce stock with a CONDITIONAL update: "subtract N only if at least
+         * N are in stock". Postgres applies the check and the write as one
+         * statement, so two orders racing for the last units cannot both win.
+         * count === 0 means somebody else took the stock first.
+         */
+        const updated = await tx.medicine.updateMany({
+          where: { id: medicine.id, stockQuantity: { gte: item.quantity } },
+          data: { stockQuantity: { decrement: item.quantity } },
+        })
+
+        if (updated.count === 0) {
           const err = new Error(
             `Insufficient stock for ${medicine.name}. Available: ${medicine.stockQuantity}, requested: ${item.quantity}`,
           )
           err.statusCode = 400
           throw err
         }
+
+        // Prices are read here but never trusted from the request body.
         const lineTotal = Number(medicine.price) * item.quantity
         totalAmount += lineTotal
         orderItemsData.push({
           medicineId: medicine.id,
           quantity: item.quantity,
           unitPrice: medicine.price,
-        })
-        // Reduce stock
-        await tx.medicine.update({
-          where: { id: medicine.id },
-          data: { stockQuantity: { decrement: item.quantity } },
         })
       }
 

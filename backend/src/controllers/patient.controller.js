@@ -4,19 +4,73 @@ const { sendSuccess, sendError } = require('../utils/response')
 const { asyncHandler, validate } = require('../middleware/validate')
 const { authenticate, authorizeAdmin } = require('../middleware/auth')
 
-async function generatePatientId() {
-  const latest = await prisma.patient.findFirst({
-    select: { patientId: true },
-    orderBy: { id: 'desc' },
-  })
-  let nextNumber = 1
-  if (latest && latest.patientId) {
-    const match = latest.patientId.match(/^PAT-(\d{1,6})$/i)
-    if (match) {
-      nextNumber = parseInt(match[1], 10) + 1
+/**
+ * Builds the next patient ID, e.g. PAT-000001, PAT-000002, ...
+ *
+ * Two details matter here:
+ *
+ * 1. We look at every existing patientId and take the highest NUMBER, rather
+ *    than trusting the newest database row. Rows are not necessarily inserted
+ *    in ID order (the seed creates them concurrently), so "last row" is not
+ *    the same as "highest number" and would hand out a duplicate ID.
+ *
+ * 2. The read and the insert run inside one SERIALIZABLE transaction, so two
+ *    people registering at the same moment cannot both compute the same
+ *    number. If they still collide (Prisma P2002) or the transaction has to be
+ *    retried (P2034), we try again with the fresh number.
+ */
+const PATIENT_ID_RETRIES = 3
+
+function nextPatientIdFrom(patientIds) {
+  let highest = 0
+  for (const patientId of patientIds) {
+    const match = /^PAT-(\d{1,6})$/i.exec(patientId || '')
+    if (match) highest = Math.max(highest, parseInt(match[1], 10))
+  }
+  return `PAT-${String(highest + 1).padStart(6, '0')}`
+}
+
+async function createPatientWithId(userId, profileData) {
+  let lastError = null
+
+  for (let attempt = 1; attempt <= PATIENT_ID_RETRIES; attempt += 1) {
+    try {
+      return await prisma.$transaction(
+        async (tx) => {
+          const existing = await tx.patient.findMany({
+            select: { patientId: true },
+          })
+          const patientId = nextPatientIdFrom(existing.map((p) => p.patientId))
+
+          return tx.patient.create({
+            data: { patientId, userId, ...profileData },
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  fullName: true,
+                  email: true,
+                  phone: true,
+                  address: true,
+                  role: true,
+                },
+              },
+              ward: { select: { id: true, name: true, type: true, capacity: true } },
+            },
+          })
+        },
+        { isolationLevel: 'Serializable' },
+      )
+    } catch (error) {
+      // P2002 = another request took this patientId, P2034 = the serializable
+      // transaction was aborted. Both are safe to retry with a fresh number.
+      lastError = error
+      const retryable = error.code === 'P2002' || error.code === 'P2034'
+      if (!retryable || attempt === PATIENT_ID_RETRIES) throw error
     }
   }
-  return `PAT-${String(nextNumber).padStart(6, '0')}`
+
+  throw lastError
 }
 
 const createPatientProfile = [
@@ -31,12 +85,18 @@ const createPatientProfile = [
     const userId = req.user.id
     const existing = await prisma.patient.findUnique({ where: { userId } })
     if (existing) return sendError(res, 409, 'Patient profile already exists')
+
     const { dateOfBirth, gender, bloodGroup, emergencyContact, emergencyPhone } = req.body
-    const patientId = await generatePatientId()
-    const patient = await prisma.patient.create({
-      data: { patientId, userId, dateOfBirth: new Date(dateOfBirth), gender, bloodGroup: bloodGroup || null, emergencyContact, emergencyPhone, registeredAt: new Date() },
-      include: { user: { select: { id: true, fullName: true, email: true, phone: true, address: true, role: true } }, ward: { select: { id: true, name: true, type: true, capacity: true } } },
+
+    const patient = await createPatientWithId(userId, {
+      dateOfBirth: new Date(dateOfBirth),
+      gender,
+      bloodGroup: bloodGroup || null,
+      emergencyContact,
+      emergencyPhone,
+      registeredAt: new Date(),
     })
+
     return sendSuccess(res, { patient }, 201)
   }),
 ]

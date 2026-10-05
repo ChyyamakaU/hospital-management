@@ -10,6 +10,21 @@ import { ErrorAlert } from '../../components/common/Feedback'
  * dashboard for their role: admins to /admin/dashboard, patients to
  * /patient/dashboard.
  */
+
+/*
+ * A visitor who tried to open a protected page is remembered by the route
+ * guard and sent here, and we honour that wish afterwards. We still check the
+ * saved path against the role that just logged in: if an admin typed
+ * /admin/wards while logged out and then signed in as a patient, following the
+ * saved path blindly would only bounce them off an admin page a moment later.
+ */
+function canOpen(role, path) {
+  if (path.startsWith('/admin')) return role === 'ADMIN'
+  // Patient pages are open to any signed-in user, admin or not.
+  if (path.startsWith('/patient')) return true
+  return false
+}
+
 export default function Login() {
   const { login } = useAuth()
   const navigate = useNavigate()
@@ -30,9 +45,8 @@ export default function Login() {
 
     try {
       const user = await login(form)
-      // A patient who was bounced off a protected page goes where they wanted.
       const redirectTo = location.state?.from
-      if (redirectTo) return navigate(redirectTo)
+      if (redirectTo && canOpen(user.role, redirectTo)) return navigate(redirectTo)
       return navigate(user.role === 'ADMIN' ? '/admin/dashboard' : '/patient/dashboard')
     } catch (err) {
       setError(err.message)

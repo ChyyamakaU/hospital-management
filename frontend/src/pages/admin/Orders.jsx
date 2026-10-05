@@ -21,7 +21,6 @@ export default function AdminOrders() {
   const [updatingId, setUpdatingId] = useState(null)
 
   const loadOrders = () => {
-    setLoading(true)
     orderService
       .getAllOrders()
       .then(setOrders)

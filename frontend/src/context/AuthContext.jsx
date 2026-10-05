@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import * as authService from '../services/auth.service'
 
@@ -66,19 +66,24 @@ export function AuthProvider({ children }) {
     navigate('/login')
   }
 
-  const value = useMemo(
-    () => ({
-      user,
-      token: localStorage.getItem('token'),
-      isAuthenticated: Boolean(user),
-      isAdmin: user?.role === 'ADMIN',
-      loading,
-      login,
-      register,
-      logout,
-    }),
-    [user, loading],
-  )
+  /*
+   * No useMemo here on purpose.
+   *
+   * The value object holds fresh closures every render, and memoising it would
+   * need every function in the dependency list. The object is tiny, React only
+   * re-renders consumers when the value actually changes identity, and this way
+   * it can never hold a stale function.
+   */
+  const value = {
+    user,
+    token: localStorage.getItem('token'),
+    isAuthenticated: Boolean(user),
+    isAdmin: user?.role === 'ADMIN',
+    loading,
+    login,
+    register,
+    logout,
+  }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

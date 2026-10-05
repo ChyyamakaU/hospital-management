@@ -4,6 +4,7 @@ const { hashPassword, comparePassword } = require('../utils/password')
 const { signToken } = require('../utils/jwt')
 const { sendSuccess, sendError } = require('../utils/response')
 const { asyncHandler, validate } = require('../middleware/validate')
+const { authenticate } = require('../middleware/auth')
 
 /**
  * POST /api/auth/register
@@ -155,4 +156,16 @@ const login = [
   }),
 ]
 
-module.exports = { register, login }
+/*
+ * GET /api/auth/me
+ *
+ * Returns the account behind the current token, without the password hash.
+ * Useful for a frontend that wants to confirm a stored token is still valid
+ * after a page refresh, instead of trusting whatever is in localStorage.
+ */
+const getMe = [
+  authenticate,
+  asyncHandler(async (req, res) => sendSuccess(res, { user: req.user })),
+]
+
+module.exports = { register, login, getMe }

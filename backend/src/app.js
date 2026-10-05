@@ -28,16 +28,36 @@ if (config.env === 'development') {
  * Only origins on the allow list are accepted; a browser request from any
  * other site is blocked. Credentials are not needed because we authenticate
  * with a Bearer token in the header, not with cookies.
+ *
+ * Two details that are easy to get wrong:
+ *
+ * 1. A rejected origin calls `callback(null, false)`, NOT `callback(new Error)`.
+ *    Throwing turns a blocked cross-origin call into a 500 in our own logs and
+ *    in the frontend's error message, which hides the real problem. Returning
+ *    false simply omits the CORS headers, and the browser blocks the call -
+ *    which is the correct behaviour.
+ *
+ * 2. Outside production we also accept any localhost port. Vite moves to the
+ *    next free port when 5173 is taken, and browsers send an Origin header even
+ *    for same-origin POSTs, so a hard-coded port would break local work.
  */
+const isLocalOrigin = (origin) =>
+  /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)
+
 app.use(
   cors({
     origin(origin, callback) {
-      // No origin means a non-browser client (curl, Postman, Render health
+      // No origin means a non-browser client (curl, Postman, the Render health
       // check). Those are safe to allow.
-      if (!origin || config.corsOrigins.includes(origin)) {
+      if (!origin) return callback(null, true)
+
+      if (config.corsOrigins.includes(origin)) return callback(null, true)
+
+      if (config.env !== 'production' && isLocalOrigin(origin)) {
         return callback(null, true)
       }
-      return callback(new Error(`Origin ${origin} is not allowed by CORS`))
+
+      return callback(null, false)
     },
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
   }),

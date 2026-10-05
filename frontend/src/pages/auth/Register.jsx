@@ -41,9 +41,10 @@ export default function Register() {
 
     setSubmitting(true)
     try {
-      // confirmPassword is not sent; the API only accepts the five fields.
-      const { confirmPassword, ...payload } = form
-      await register(payload)
+      // Send only the five fields the API accepts. confirmPassword is a
+      // frontend-only check, so it never leaves the browser.
+      const { fullName, email, password, phone, address } = form
+      await register({ fullName, email, password, phone, address })
       navigate('/patient/dashboard')
     } catch (err) {
       setError(err.message)

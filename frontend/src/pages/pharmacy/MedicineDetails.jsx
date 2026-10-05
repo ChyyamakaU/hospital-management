@@ -18,6 +18,9 @@ export default function MedicineDetails() {
   const [error, setError] = useState('')
   const [quantity, setQuantity] = useState(1)
 
+  // Captured once on load so every comparison on this page uses the same "now".
+  const [now] = useState(() => Date.now())
+
   useEffect(() => {
     let cancelled = false
 
@@ -55,7 +58,9 @@ export default function MedicineDetails() {
   }
 
   const outOfStock = medicine.stockQuantity <= 0
-  const expired = new Date(medicine.expiryDate) < new Date()
+  const expired = Boolean(
+    medicine.expiryDate && new Date(medicine.expiryDate).getTime() < now,
+  )
 
   const handleAddToCart = () => {
     addItem(medicine, quantity)

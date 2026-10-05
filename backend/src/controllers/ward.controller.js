@@ -157,59 +157,81 @@ const assignPatientToWard = [
     const wardId = req.params.wardId
     const patientId = req.params.patientId
 
-    const result = await prisma.$transaction(async (tx) => {
-      const ward = await tx.ward.findUnique({
-        where: { id: wardId },
-        include: { _count: { select: { patients: true } } },
-      })
-      if (!ward) {
-        const err = new Error('Ward not found')
-        err.statusCode = 404
-        throw err
-      }
+    /*
+     * Counting patients and then assigning them is two statements, so on their
+     * own they could overbook a ward when two admins submit at the same time.
+     * SERIALIZABLE isolation makes Postgres refuse the second, conflicting
+     * transaction (Prisma error P2034), and we simply retry with fresh counts.
+     */
+    let result
+    let attempt = 0
+    while (true) {
+      attempt += 1
+      try {
+        result = await prisma.$transaction(
+          async (tx) => {
+            const ward = await tx.ward.findUnique({
+              where: { id: wardId },
+              include: { _count: { select: { patients: true } } },
+            })
+            if (!ward) {
+              const err = new Error('Ward not found')
+              err.statusCode = 404
+              throw err
+            }
 
-      const patient = await tx.patient.findUnique({ where: { id: patientId } })
-      if (!patient) {
-        const err = new Error('Patient not found')
-        err.statusCode = 404
-        throw err
-      }
+            const patient = await tx.patient.findUnique({ where: { id: patientId } })
+            if (!patient) {
+              const err = new Error('Patient not found')
+              err.statusCode = 404
+              throw err
+            }
 
-      // Already in this ward: no-op
-      if (patient.wardId === wardId) {
-        return { message: 'Patient is already assigned to this ward', ward, patient }
-      }
+            // Already in this ward: nothing to do.
+            if (patient.wardId === wardId) {
+              return {
+                message: 'Patient is already assigned to this ward',
+                ward: { ...ward, occupancy: ward._count.patients },
+                patient,
+              }
+            }
 
-      // If the ward is full, reject — but only if the patient isn't already
-      // counted in it (they can't be, since we checked above).
-      if (ward._count.patients >= ward.capacity) {
-        const err = new Error(
-          `Ward is full. Capacity ${ward.capacity}, current occupancy ${ward._count.patients}`,
+            if (ward._count.patients >= ward.capacity) {
+              const err = new Error(
+                `Ward is full. Capacity ${ward.capacity}, current occupancy ${ward._count.patients}`,
+              )
+              err.statusCode = 400
+              throw err
+            }
+
+            const updatedPatient = await tx.patient.update({
+              where: { id: patientId },
+              data: { wardId },
+              include: {
+                ward: { select: { id: true, name: true, type: true, capacity: true } },
+                user: { select: { fullName: true } },
+              },
+            })
+
+            const updatedWard = await tx.ward.findUnique({
+              where: { id: wardId },
+              include: { _count: { select: { patients: true } } },
+            })
+
+            return {
+              message: 'Patient assigned to ward successfully',
+              patient: updatedPatient,
+              ward: { ...updatedWard, occupancy: updatedWard._count.patients },
+            }
+          },
+          { isolationLevel: 'Serializable' },
         )
-        err.statusCode = 400
-        throw err
+        break
+      } catch (error) {
+        // Retry a couple of times on a serialization conflict, then give up.
+        if (error.code !== 'P2034' || attempt >= 3) throw error
       }
-
-      const updatedPatient = await tx.patient.update({
-        where: { id: patientId },
-        data: { wardId },
-        include: {
-          ward: { select: { id: true, name: true, type: true, capacity: true } },
-          user: { select: { fullName: true } },
-        },
-      })
-
-      const updatedWard = await tx.ward.findUnique({
-        where: { id: wardId },
-        include: { _count: { select: { patients: true } } },
-      })
-
-      return {
-        message: 'Patient assigned to ward successfully',
-        patient: updatedPatient,
-        ward: { ...updatedWard, occupancy: updatedWard._count.patients },
-      }
-    })
+    }
 
     return sendSuccess(res, result)
   }),

@@ -38,7 +38,6 @@ export default function AdminWards() {
   const [detailLoading, setDetailLoading] = useState(false)
 
   const loadWards = () => {
-    setLoading(true)
     wardService
       .listWards()
       .then(setWards)
@@ -74,6 +73,7 @@ export default function AdminWards() {
     setError('')
     setSuccess('')
     setSaving(true)
+    setLoading(true)
 
     try {
       if (editingId) {
@@ -87,6 +87,7 @@ export default function AdminWards() {
       loadWards()
     } catch (err) {
       setError(err.message)
+      setLoading(false)
     } finally {
       setSaving(false)
     }
@@ -103,12 +104,14 @@ export default function AdminWards() {
 
     setError('')
     setSuccess('')
+    setLoading(true)
     try {
       await wardService.deleteWard(ward.id)
       setSuccess('Ward deleted successfully')
       loadWards()
     } catch (err) {
       setError(err.message)
+      setLoading(false)
     }
   }
 

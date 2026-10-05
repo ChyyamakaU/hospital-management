@@ -25,15 +25,19 @@ export default function PatientDashboard() {
 
     async function load() {
       try {
-        // These are independent requests, so run them together.
-        const [profileData, orderData, medicineData] = await Promise.all([
-          patientService.getMyProfile(),
+        // The profile comes first because it decides what else exists. Asking
+        // for orders before we know there is a profile would only produce a
+        // 404, so we fetch the profile, then the independent calls together.
+        const profileData = await patientService.getMyProfile()
+        if (cancelled) return
+        setProfile(profileData)
+
+        const [orderData, medicineData] = await Promise.all([
           orderService.getMyOrders().catch(() => []),
           medicineService.listMedicines({ inStock: 'true' }).catch(() => []),
         ])
 
         if (cancelled) return
-        setProfile(profileData)
         setOrders(orderData)
         setMedicines(medicineData)
       } catch (err) {

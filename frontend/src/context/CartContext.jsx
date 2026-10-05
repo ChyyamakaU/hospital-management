@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
 
 /*
  * CartContext keeps the shopping cart in localStorage so a page refresh (or a
@@ -105,19 +105,17 @@ export function CartProvider({ children }) {
     0,
   )
 
-  const value = useMemo(
-    () => ({
-      items,
-      itemCount,
-      total,
-      addItem,
-      updateQuantity,
-      removeItem,
-      clearCart,
-      toOrderItems,
-    }),
-    [items, itemCount, total],
-  )
+  // Same reasoning as AuthContext: a plain object avoids stale-function bugs.
+  const value = {
+    items,
+    itemCount,
+    total,
+    addItem,
+    updateQuantity,
+    removeItem,
+    clearCart,
+    toOrderItems,
+  }
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>
 }

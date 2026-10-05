@@ -36,8 +36,14 @@ export default function AdminPharmacy() {
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('all')
 
+  /*
+   * "Now" is captured once when the page loads. Reading the clock during
+   * render can produce a different answer on every re-render, which is both
+   * wasteful and confusing when you are only asking "is this already expired?".
+   */
+  const [now] = useState(() => Date.now())
+
   const loadMedicines = () => {
-    setLoading(true)
     medicineService
       .listMedicines()
       .then(setMedicines)
@@ -58,12 +64,14 @@ export default function AdminPharmacy() {
 
     setError('')
     setSuccess('')
+    setLoading(true)
     try {
       await medicineService.deleteMedicine(medicine.id)
       setSuccess(`"${medicine.name}" deleted`)
       loadMedicines()
     } catch (err) {
       setError(err.message)
+      setLoading(false)
     }
   }
 
@@ -82,6 +90,7 @@ export default function AdminPharmacy() {
 
     setError('')
     setSuccess('')
+    setLoading(true)
     try {
       await medicineService.updateMedicine(medicine.id, {
         stockQuantity: medicine.stockQuantity + quantity,
@@ -90,6 +99,7 @@ export default function AdminPharmacy() {
       loadMedicines()
     } catch (err) {
       setError(err.message)
+      setLoading(false)
     }
   }
 
@@ -99,11 +109,16 @@ export default function AdminPharmacy() {
   const visible = medicines.filter((medicine) => {
     const matchesSearch =
       query === '' || medicine.name.toLowerCase().includes(query)
+    if (!matchesSearch) return false
 
-    if (filter === 'low') return medicine.stockQuantity <= medicine.lowStockThreshold
+    if (filter === 'low') {
+      return medicine.stockQuantity <= medicine.lowStockThreshold
+    }
     if (filter === 'out') return medicine.stockQuantity <= 0
     if (filter === 'expired') {
-      return medicine.expiryDate && new Date(medicine.expiryDate) < new Date()
+      return Boolean(
+        medicine.expiryDate && new Date(medicine.expiryDate).getTime() < now,
+      )
     }
     return true
   })
@@ -177,9 +192,10 @@ export default function AdminPharmacy() {
             </thead>
             <tbody className="divide-y divide-ink-100">
               {visible.map((medicine) => {
-                const expired =
+                const expired = Boolean(
                   medicine.expiryDate &&
-                  new Date(medicine.expiryDate) < new Date()
+                    new Date(medicine.expiryDate).getTime() < now,
+                )
                 const low =
                   medicine.stockQuantity <= medicine.lowStockThreshold
 

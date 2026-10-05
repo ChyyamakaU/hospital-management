@@ -89,12 +89,11 @@ hospital-management/
 │
 ├── backend/
 │   ├── src/
-│   │   ├── config/         environment variables
+│   │   ├── config/         env values (config/index.js) + Prisma client
 │   │   ├── controllers/    what happens for each route
 │   │   ├── middleware/     authenticate, authorizeAdmin, validate, errors
 │   │   ├── routes/         URL definitions
-│   │   ├── services/       business logic (orders, wards, patients)
-│   │   ├── utils/          response helpers, AppError
+│   │   ├── utils/          response helpers, AppError, jwt, password
 │   │   └── app.js          Express app
 │   ├── prisma/             schema.prisma, migrations, seed.js
 │   ├── .env.example
@@ -112,8 +111,8 @@ Each file answers one question:
 - **routes** &mdash; "which URL and HTTP method goes where?"
 - **middleware** &mdash; "what must pass before the handler runs?"
 - **controllers** &mdash; "what does this endpoint actually do?"
-- **services** &mdash; "the tricky shared business rules" (stock checks, capacity
-  checks, patient ID generation).
+- **utils** &mdash; "small shared helpers" (JWT signing, bcrypt hashing, response
+  envelopes).
 
 This keeps any file short enough to read in one go.
 
@@ -142,7 +141,7 @@ sudo -u postgres psql
 
 ```sql
 CREATE USER hospital WITH PASSWORD 'your_password';
-CREATE DATABASE hospital_db OWNER hospital;
+CREATE DATABASE hospital_management OWNER hospital;
 ```
 
 ### 3. Configure environment variables
@@ -158,11 +157,16 @@ Then edit `backend/.env`:
 ```env
 NODE_ENV=development
 PORT=5000
-DATABASE_URL="postgresql://hospital:your_password@localhost:5432/hospital_db?schema=public"
+DATABASE_URL="postgresql://hospital:your_password@localhost:5432/hospital_management?schema=public"
 JWT_SECRET=your_long_random_string
 JWT_EXPIRES_IN=7d
 CORS_ORIGIN=http://localhost:5173
 ```
+
+`CORS_ORIGIN` accepts a comma-separated list when the frontend runs on a
+different port, for example `http://localhost:5173,http://localhost:5174`.
+In development the browser rarely needs it at all, because the Vite proxy makes
+the API look like it lives on the same origin.
 
 Generate a strong `JWT_SECRET`:
 
@@ -228,6 +232,7 @@ GET  /api/health
 ```text
 POST /api/auth/register
 POST /api/auth/login
+GET  /api/auth/me      (any logged-in user)
 ```
 
 ### Patients (Phase 4)
@@ -278,6 +283,82 @@ DELETE /api/wards/:wardId/patients/:patientId   (admin)
 GET /api/admin/dashboard      (admin only)
 ```
 
+### Query parameters for `GET /api/medicines`
+
+```text
+q=<text>            search name and description
+category=<text>     exact category (case-insensitive)
+inStock=true|false
+lowStock=true|false stock at or below the medicine's own lowStockThreshold
+expired=true|false
+```
+
+### Response shapes used by the frontend
+
+```js
+GET  /api/medicines      -> data.medicines[]
+GET  /api/medicines/:id  -> data.medicine
+POST /api/medicines      -> data.medicine          (201)
+DELETE /api/medicines/:id-> data.message
+
+GET  /api/patients       -> data.patients[]
+GET  /api/patients/:id   -> data.patient
+POST /api/orders         -> data.order             (201)
+GET  /api/orders         -> data.orders[]
+PUT  /api/orders/:id/status -> data.order
+
+GET  /api/wards          -> data.wards[]           each with `occupancy`
+GET  /api/wards/:id      -> data.ward              includes `patients[]`
+POST /api/wards          -> data.ward              (201)
+DELETE /api/wards/:id    -> data.message
+
+POST /api/wards/:wardId/patients/:patientId -> data { message, patient, ward }
+DELETE /api/wards/:wardId/patients/:patientId -> data { message, patient, ward }
+
+GET  /api/admin/dashboard -> data { stats, wards, lowStockMedicines,
+                                expiredMedicines, recentPatients, recentOrders }
+GET  /api/health         -> data { uptime, timestamp }
+GET  /api/auth/me        -> data.user { id, fullName, email, role, phone, address }
+```
+
+Money values are Prisma `Decimal` columns, so they arrive as JSON strings.
+Always convert with `Number(...)` before arithmetic (see `utils/format.js`).
+
+---
+
+## Frontend routes
+
+The URL map lives in `frontend/src/App.jsx`.
+
+```text
+Public
+  /                        home, pings GET /api/health
+  /login                   login (redirects admins to /admin/dashboard)
+  /register                patient self-registration
+
+Logged in (any role)
+  /patient/dashboard        summary, recent orders, in-stock medicines
+  /patient/profile         create or update the patient record
+  /patient/orders          own order history
+  /pharmacy                medicine list with search + category filter
+  /pharmacy/:id            medicine details
+  /cart                    cart and checkout
+
+Admin only
+  /admin/dashboard         statistics, low stock, expired, recent activity
+  /admin/patients          searchable patient table
+  /admin/patients/:id      patient record, ward assignment, order history
+  /admin/wards             ward CRUD with occupancy bars
+  /admin/pharmacy          inventory table with restock/delete
+  /admin/pharmacy/new      create medicine form
+  /admin/pharmacy/:id/edit edit medicine form
+  /admin/orders            all orders with status updates
+```
+
+`ProtectedRoute` sends logged-out visitors to `/login` and patients who try an
+admin URL back to `/patient/dashboard`. That is a UX convenience only: the real
+protection is `authenticate` and `authorizeAdmin` on the backend.
+
 ---
 
 ## How authentication works
@@ -320,11 +401,14 @@ real deployment.
 
 Nothing has been deployed. Follow these steps when you are ready.
 
+`render.yaml` (repo root) and `frontend/vercel.json` are committed so the setup
+below is declarative rather than something you retype in dashboards.
+
 ### Backend on Render
 
 1. Push the repository to GitHub.
 2. In Render, create a **Web Service** connected to the repo. Root directory:
-   `backend`.
+   `backend`. (Or pick **Blueprints** and let it read `render.yaml`.)
 3. Build command:
 
    ```bash
@@ -332,7 +416,8 @@ Nothing has been deployed. Follow these steps when you are ready.
    ```
 
 4. Start command: `npm start`
-5. Environment variables (Render dashboard):
+5. Health check path: `/api/health`
+6. Environment variables (Render dashboard):
 
    ```text
    NODE_ENV=production
@@ -357,6 +442,10 @@ Nothing has been deployed. Follow these steps when you are ready.
 3. Deploy, then add the resulting `https://*.vercel.app` URL to the backend's
    `CORS_ORIGIN` (add extra preview URLs if you use them).
 
+`frontend/vercel.json` rewrites every path to `index.html`. Without it,
+refreshing a deep link such as `/admin/dashboard` would ask Vercel for a file
+that does not exist and show a 404 instead of the React app.
+
 ### Environment variable summary
 
 | App | Variable | Purpose |
@@ -374,9 +463,43 @@ Nothing has been deployed. Follow these steps when you are ready.
 ## Build status
 
 ```bash
+cd frontend && npm run lint    # oxlint: 0 errors
 cd frontend && npm run build   # verified passing
 cd backend  && npm start       # verified running on port 5000
 ```
+
+### Automated verification
+
+`backend/scripts/smoke-test.js` exercises the whole API with plain `fetch`: no
+test framework to install. It covers authentication, validation, role
+enforcement, patient profiles, pharmacy filtering and CRUD, order totals and
+stock rollback, order status rules, ward capacity and admin dashboard stats.
+
+```bash
+# terminal 1
+cd backend && npm start
+
+# terminal 2, from the repo root
+npm run seed    # reset to the known demo data
+npm test        # 67 checks; exits non-zero if anything fails
+```
+
+The script creates a test medicine, a test user and two orders, so run
+`npm run seed` afterwards to get the clean demo state back.
+
+### Verified manually with curl
+
+- duplicate email `409`, invalid login `401`, `GET /auth/me` never returns the
+  password hash
+- role in a register payload is ignored (always `PATIENT`)
+- patient hitting `/api/admin/dashboard` gets `403`; missing token gets `401`
+- medicine filters (`inStock`, `lowStock`, `expired`, `q`, `category`)
+- deleting a medicine that past orders reference returns `409`
+- concurrent orders never oversell: 5 simultaneous orders for 3 units each
+  against 10 in stock succeeded 3 times and left stock at 1
+- ward capacity enforced, including under 3 simultaneous assignments to a
+  2-bed ward (2 accepted, 1 rejected)
+- patient ID generation stays sequential under 5 simultaneous registrations
 
 ---
 
