@@ -4,14 +4,28 @@
  * instead of letting each controller re-check them.
  */
 const validate = (req, res, next) => {
-  const errors = req.validationErrors || []
+  const errors = (req.validationErrors && req.validationErrors()) || (req.errors) || []
 
-  if (errors.length > 0) {
+  // Express 5 returns validation result differently; also try validationResult
+  const { validationResult } = require('express-validator')
+  const result = validationResult(req)
+  if (result && !result.isEmpty()) {
+    const details = result.array().map((error) => ({
+      field: error.path || error.param,
+      message: error.msg,
+    }))
+    return res.status(400).json({
+      success: false,
+      message: 'Validation failed',
+      errors: details,
+    })
+  }
+
+  if (errors && errors.length > 0) {
     const details = errors.map((error) => ({
       field: error.path || error.param,
       message: error.msg,
     }))
-
     return res.status(400).json({
       success: false,
       message: 'Validation failed',
