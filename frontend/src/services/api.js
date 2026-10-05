@@ -24,6 +24,20 @@ const api = axios.create({
   },
 })
 
+/*
+ * Runs BEFORE every request is sent. If a token is stored, attach it as:
+ *   Authorization: Bearer <token>
+ *
+ * The key 'token' is the single place the token lives (see AuthContext).
+ */
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token')
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
+
 // Runs after every request succeeds.
 api.interceptors.response.use(
   (response) => response,
@@ -34,6 +48,17 @@ api.interceptors.response.use(
       (error.code === 'ERR_NETWORK'
         ? 'Cannot reach the server. Is the backend running on port 5000?'
         : error.message)
+
+    /*
+     * A 401 means the token is missing, expired or invalid. Clear the stale
+     * session so the app falls back to the login page instead of looping on
+     * failed requests.
+     */
+    if (error.response?.status === 401) {
+      localStorage.removeItem('token')
+      localStorage.removeItem('user')
+      window.dispatchEvent(new Event('auth:unauthorised'))
+    }
 
     return Promise.reject(new Error(message))
   },

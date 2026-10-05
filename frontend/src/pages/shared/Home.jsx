@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getHealth } from '../../services/api.js'
+import { getHealth } from '../../services/api'
 
 export default function Home() {
   const [health, setHealth] = useState(null)
@@ -18,7 +18,7 @@ export default function Home() {
     <div className="mx-auto max-w-6xl px-4 py-16">
       <section className="text-center">
         <p className="text-sm font-semibold uppercase tracking-widest text-brand-600">
-          Phase 1 &mdash; Project setup complete
+          Pharmacy · Wards · Patients
         </p>
         <h1 className="mt-3 text-4xl font-bold text-ink-900 sm:text-5xl">
           Hospital Management System
