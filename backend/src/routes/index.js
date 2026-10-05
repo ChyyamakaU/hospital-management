@@ -6,6 +6,7 @@ const adminRoutes = require('./admin.routes')
 const patientRoutes = require('./patient.routes')
 const medicineRoutes = require('./medicine.routes')
 const orderRoutes = require('./order.routes')
+const wardRoutes = require('./ward.routes')
 
 const router = express.Router()
 
@@ -15,5 +16,6 @@ router.use('/admin', adminRoutes)
 router.use('/patients', patientRoutes)
 router.use('/medicines', medicineRoutes)
 router.use('/orders', orderRoutes)
+router.use('/wards', wardRoutes)
 
 module.exports = router
