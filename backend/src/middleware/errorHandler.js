@@ -16,6 +16,12 @@ const errorHandler = (err, req, res, next) => {
   if (err.code === 'P2002') {
     statusCode = 409
     message = 'A record with that value already exists'
+  } else if (err.code === 'P2003') {
+    // Foreign key constraint failed: something else still points at this row.
+    // For us this is usually deleting a medicine that past orders reference.
+    statusCode = 409
+    message =
+      'This record is still referenced by other data, so it cannot be deleted'
   } else if (err.code === 'P2025') {
     statusCode = 404
     message = 'Record not found'

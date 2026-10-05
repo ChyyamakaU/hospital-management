@@ -97,11 +97,11 @@ export default function Login() {
         </p>
       </form>
 
-      <div className="card mt-4 bg-ink-100 text-xs text-ink-600">
+      {/* <div className="card mt-4 bg-ink-100 text-xs text-ink-600">
         <p className="font-semibold text-ink-700">Development accounts</p>
         <p className="mt-1">admin@hospital.test / Admin@12345</p>
         <p>amina@patient.test / Admin@12345</p>
-      </div>
+      </div> */}
     </div>
   )
 }

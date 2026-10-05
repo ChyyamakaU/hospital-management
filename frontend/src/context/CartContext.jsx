@@ -17,8 +17,23 @@ const STORAGE_KEY = 'cart'
 
 export function CartProvider({ children }) {
   const [items, setItems] = useState(() => {
-    const stored = localStorage.getItem(STORAGE_KEY)
-    return stored ? JSON.parse(stored) : []
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY)
+      const parsed = stored ? JSON.parse(stored) : []
+      // Guard against hand-edited localStorage: every item needs a positive
+      // integer quantity, otherwise the backend would reject the order.
+      return Array.isArray(parsed)
+        ? parsed.filter(
+            (item) =>
+              item &&
+              Number.isInteger(item.quantity) &&
+              item.quantity > 0,
+          )
+        : []
+    } catch {
+      // Corrupted JSON should never stop the app from starting.
+      return []
+    }
   })
 
   useEffect(() => {
@@ -26,6 +41,10 @@ export function CartProvider({ children }) {
   }, [items])
 
   const addItem = (medicine, quantity = 1) => {
+    // Out of stock: never add it, otherwise the cart would hold an item the
+    // server is guaranteed to reject at checkout.
+    if (medicine.stockQuantity <= 0) return
+
     setItems((current) => {
       const existing = current.find((i) => i.medicineId === medicine.id)
 

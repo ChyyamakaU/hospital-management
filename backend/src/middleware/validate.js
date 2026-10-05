@@ -1,35 +1,23 @@
+const { validationResult } = require('express-validator')
+
 /*
- * express-validator collects validation failures on `req.validationErrors`
- * (Express 5). This middleware turns them into one readable 400 response
- * instead of letting each controller re-check them.
+ * express-validator attaches its results to the request. This middleware turns
+ * them into one readable 400 response instead of letting each controller
+ * re-check them by hand.
  */
 const validate = (req, res, next) => {
-  const errors = (req.validationErrors && req.validationErrors()) || (req.errors) || []
-
-  // Express 5 returns validation result differently; also try validationResult
-  const { validationResult } = require('express-validator')
   const result = validationResult(req)
-  if (result && !result.isEmpty()) {
-    const details = result.array().map((error) => ({
-      field: error.path || error.param,
-      message: error.msg,
-    }))
-    return res.status(400).json({
-      success: false,
-      message: 'Validation failed',
-      errors: details,
-    })
-  }
 
-  if (errors && errors.length > 0) {
-    const details = errors.map((error) => ({
-      field: error.path || error.param,
+  if (!result.isEmpty()) {
+    const errors = result.array().map((error) => ({
+      field: error.path,
       message: error.msg,
     }))
+
     return res.status(400).json({
       success: false,
       message: 'Validation failed',
-      errors: details,
+      errors,
     })
   }
 
@@ -38,7 +26,8 @@ const validate = (req, res, next) => {
 
 /*
  * Wraps an async controller so a rejected promise reaches the error handler.
- * In Express 5 this is automatic, but keeping it makes the intent obvious.
+ * Express 5 forwards rejections automatically, but keeping this makes the
+ * intent explicit and the code portable.
  */
 const asyncHandler = (fn) => (req, res, next) =>
   Promise.resolve(fn(req, res, next)).catch(next)
