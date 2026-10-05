@@ -1,0 +1,83 @@
+@import 'tailwindcss';
+
+/*
+ * Tailwind CSS v4 is configured in CSS, not in a tailwind.config.js file.
+ * The @theme block below sets up our project's colours. We use CSS variables
+ * so the whole app shares one consistent teal/blue medical palette.
+ */
+@theme {
+  --color-brand-50: #eefbf7;
+  --color-brand-100: #d5f5ec;
+  --color-brand-200: #aeead9;
+  --color-brand-300: #78d9c1;
+  --color-brand-400: #43c0a5;
+  --color-brand-500: #21a68c;
+  --color-brand-600: #178573;
+  --color-brand-700: #166b5f;
+  --color-brand-800: #17564e;
+  --color-brand-900: #174841;
+
+  --color-ink-50: #f6f7f9;
+  --color-ink-100: #eceef2;
+  --color-ink-200: #d5dae3;
+  --color-ink-300: #b0b9c9;
+  --color-ink-400: #8492a9;
+  --color-ink-500: #66748c;
+  --color-ink-600: #525d73;
+  --color-ink-700: #434c5d;
+  --color-ink-800: #3a4150;
+  --color-ink-900: #343946;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-ink-50 text-ink-800 antialiased;
+    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial,
+      sans-serif;
+  }
+}
+
+@layer components {
+  /* Shared button styles so every button in the app looks the same.
+     Note: Tailwind v4 cannot @apply a custom class such as `btn` from inside
+     another rule, so the base button styles are repeated in each variant. */
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg
+      bg-brand-600 px-4 py-2 text-sm font-semibold text-white
+      transition-colors duration-150 hover:bg-brand-700
+      disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg
+      border border-ink-200 bg-white px-4 py-2 text-sm font-semibold
+      text-ink-700 transition-colors duration-150 hover:bg-ink-100
+      disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg
+      bg-red-600 px-4 py-2 text-sm font-semibold text-white
+      transition-colors duration-150 hover:bg-red-700
+      disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .card {
+    @apply rounded-xl border border-ink-200 bg-white p-5 shadow-sm;
+  }
+
+  .field-label {
+    @apply mb-1 block text-sm font-medium text-ink-700;
+  }
+
+  .field-input {
+    @apply w-full rounded-lg border border-ink-300 bg-white px-3 py-2 text-sm
+      text-ink-800 outline-none focus:border-brand-500 focus:ring-2
+      focus:ring-brand-100;
+  }
+}
