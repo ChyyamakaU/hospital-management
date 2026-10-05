@@ -1,3 +1,4 @@
+/* eslint-disable no-undef */
 const asyncHandler = require('../middleware/validate').asyncHandler
 
 /**
